@@ -24,6 +24,14 @@ The Loop Execution Engine is the core state machine responsible for processing a
 * Implementing actual MCP clients or agent generation logic (these will be stubbed or built in subsequent specs).
 * Complex history management (history forwarding and summarization will be handled in another spec).
 
+## Key Requirements
+
+*   **Strict Error vs. Failure Separation:** The state machine MUST differentiate between fatal system errors (which crash the `Run` and return a Go `error`) and graceful step failures (which set `pass = false` and trigger the `fail: next` loop transition).
+*   **Limit Enforcement:** The engine MUST track and strictly enforce both `globalMaxSteps` (across the entire `Run`) and `maxSteps` (for the current loop) to prevent infinite recursive loops.
+*   **Context Propagation:** A `context.Context` MUST be threaded through all step executions, and the state machine MUST abort immediately if the context is cancelled.
+*   **Cyclic Dependency Prevention:** While `globalMaxSteps` prevents infinite execution, the engine SHOULD also implement depth limits or cyclic detection on nested `loop` actions to prevent call stack overflows during deep recursion,
+or in general use an execution strategy that is guaranteed not to overflow.
+
 ## Design
 
 ### State Machine Runner
@@ -42,6 +50,14 @@ The `Runner` must maintain two counters:
 
 ### Nested Loops
 When a step has a `loop` action, `ExecuteLoop` is called recursively with the nested loop's name and interpolated arguments.
+
+### Context and Cancellation
+The state machine can run for a long time. The Runner must accept a `context.Context` and pass it to all step executors. If the context is cancelled (e.g. via SIGINT), the runner must abort immediately and return the context error.
+
+### System Errors vs. Step Failures
+The implementor must clearly separate system errors from step failures:
+*   **System Errors:** E.g., malformed configuration, missing files, broken pipe connections. These should return a hard Go `error` from `ExecuteLoop`, aborting the entire `Run`.
+*   **Step Failures:** E.g., an MCP tool returning a non-zero exit code, or an Agent calling the `fail()` tool. These should *not* return a Go `error` from the executor. Instead, they should return `pass = false` and a message, allowing the state machine to gracefully execute the `fail` transition (like `retry` or `return`).
 
 
 

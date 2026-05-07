@@ -23,11 +23,18 @@ Connects the Loop Execution Engine to local Model Context Protocol (MCP) servers
 * We are not building the actual MCP servers (e.g., git-mcp). We are only building the client and the step execution logic.
 * LLM Agent tool usage is not in this spec (that belongs in `loop-agent-integration`).
 
+## Key Requirements
+
+*   **OS-Level Named Pipes:** The connection to local MCP servers MUST be implemented using actual OS-level named pipes (FIFOs created via `mkfifo`), reading and writing directly to the pipe files. It MUST NOT use Unix Domain Sockets.
+*   **Persistent Connections:** The connection manager MUST maintain long-lived, thread-safe connections to the pipes for the duration of the run to minimize connection overhead.
+*   **Fault-Tolerant Tool Execution:** If an MCP tool returns an error payload (as defined by the JSON-RPC spec), it MUST NOT crash the client connection. It MUST be gracefully handled and returned to the `Runner` to trigger a step failure.
+
 ## Design
 
 ### MCP Client Connection
 *   Read `LocalMCPServer` resources to discover the `pipe` path for each server.
-*   Implement a connection manager that establishes communication over the specified named pipes using standard MCP JSON-RPC protocol.
+*   Implement a connection manager that establishes communication over the specified named pipes using standard MCP JSON-RPC protocol. **Note:** This explicitly means using actual OS-level named pipes (FIFOs, typically created with `mkfifo`), reading and writing directly to the pipe file, not Unix Domain Sockets.
+*   The connection manager should maintain long-lived, thread-safe connections to each MCP server for the duration of the `Run` rather than opening/closing the pipe per tool invocation.
 
 ### Direct MCP Tool Steps
 *   Extend the `Runner` to handle steps where the action is `mcp`.

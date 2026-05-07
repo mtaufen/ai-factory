@@ -22,10 +22,18 @@ Defines the core Kubernetes Resource Model (KRM) API types and variable interpol
 * We are NOT implementing Kubernetes Custom Resource Definitions (CRDs) or a Kubernetes Operator at this time. Only the Go types are needed.
 * We are not implementing the actual execution logic in this spec.
 
+## Key Requirements
+
+*   **Kubernetes Resource Model (KRM) Compliance:** The Go structs MUST strictly implement standard Kubernetes `TypeMeta` and `ObjectMeta` fields, and include `deepcopy-gen` annotations to ensure compatibility with standard Kubernetes machinery down the line.
+*   **YAML Compatibility:** Parsing logic MUST utilize Kubernetes-native `YAMLOrJSONDecoder` to support multi-document YAML and strict struct unmarshaling.
+*   **Variable Interpolation Safety:** The `ExpandVariables` logic MUST cleanly handle undefined variables (e.g. by evaluating to an empty string) and MUST NOT panic or crash the parser if syntax is malformed.
+
 ## Design
 
 ### Go Structs
 Create Go structs for the four main resources using `factory.ai.gke.io/v1alpha1` style schema.
+*   **DeepCopy methods**: The types should include `//+k8s:deepcopy-gen=true` and `//+k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object` annotations so that standard `controller-gen` tooling can generate `DeepCopy` methods.
+*   **YAML Parsing**: Specify that the loader must use Kubernetes-native decoders (e.g., `k8s.io/apimachinery/pkg/util/yaml.NewYAMLOrJSONDecoder`) to support reading multi-document YAML files into these structs.
 
 ```go
 package apitypes

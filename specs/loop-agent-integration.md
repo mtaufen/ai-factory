@@ -23,6 +23,12 @@ Enables the Loop Execution Engine to invoke LLM agents as steps, including injec
 
 * Implementing the internal logic of the `adk-go` framework. We will utilize it as a library.
 
+## Key Requirements
+
+*   **Synthetic Yield Controls:** The engine MUST inject synthetic `pass(message)` and `fail(message)` tools into the agent's context. The agent MUST NOT be able to terminate its step without invoking one of these tools (or hitting a hard iteration limit).
+*   **Strict Tool Filtering:** The agent MUST ONLY be granted access to the specific MCP tools explicitly listed in the `Agent.spec.tools` allowlist. No implicit tool access is permitted.
+*   **Agent Turn Limits:** To prevent LLMs from getting stuck in infinite tool-calling loops without ever calling `pass` or `fail`, the agent executor MUST enforce a maximum number of LLM turns per step execution. Hitting this limit results in a step failure.
+
 ## Design
 
 ### Agent Step Execution

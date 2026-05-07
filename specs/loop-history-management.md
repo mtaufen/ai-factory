@@ -22,6 +22,11 @@ Implements context and history forwarding between steps in the loop execution en
 
 * Implementing the actual Agent or Tool execution logic. We are only focused on how history context strings or message arrays are passed between them.
 
+## Key Requirements
+
+*   **Immutable History Accumulation:** The history forwarding logic MUST strictly adhere to the step's requested mode (`none`, `full`, or `summary`). When a step returns, its history must be accurately bubbled up to the caller without leaking context where `history: none` is specified.
+*   **Summarization Interface:** The summarization logic MUST be abstracted behind an interface so that the underlying LLM provider can be easily swapped or mocked during tests.
+
 ## Design
 
 ### History Types
