@@ -38,8 +38,36 @@ When transitioning from `Step A` to `Step B`:
 ### Summarization Service
 Create a `Summarizer` interface. Provide a simple LLM-based implementation that prompts the model to summarize the previous context and the latest result for the next step.
 
+## Examples
+
+```yaml
+kind: Loop
+metadata:
+  name: history-demo-loop
+spec:
+  start: step-one
+  steps:
+  - name: step-one
+    mcp:
+      name: git-mcp
+      tool: clone_repository
+    pass:
+      next: step-two
+      history: none # whether to forward context, default is "none" to start next step with fresh context
+    fail:
+      next: return
+      history: full # passes the full history from this step to the next step
+  - name: step-two
+    agent:
+      name: some-agent
+    fail:
+      next: return
+      history: summary # passes an LLM summary of history to the next step
+```
+
 ## Tests
 
 * Unit tests verifying `history: none` correctly drops all previous context.
 * Unit tests verifying `history: full` concatenates context across multiple steps.
 * Unit tests with a mocked `Summarizer` to verify `history: summary` calls the summarizer and forwards the result.
+

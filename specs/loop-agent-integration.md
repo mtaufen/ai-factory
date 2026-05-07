@@ -44,8 +44,45 @@ Enables the Loop Execution Engine to invoke LLM agents as steps, including injec
 *   The argument provided to `pass` or `fail` becomes the step's outcome message, and the step transitions accordingly.
 *   If the agent exceeds its internal interaction limits without calling `pass` or `fail`, the step should terminate as a `fail`.
 
+## Examples
+
+```yaml
+kind: Agent
+apiVersion: factory.ai.gke.io/v1alpha1
+metadata:
+  name: speccer-agent
+spec:
+  path: /etc/agents/speccer/agent.md # path to agent.md definition
+  tools:
+  - mcp: 
+      name: dev-mcp # name of MCP server
+      tools: # allowlist of tools
+      - name: ReadFile
+      - name: WriteFile
+---
+kind: Loop
+metadata:
+  name: agent-demo-loop
+spec:
+  start: speccer-step
+  steps:
+  - name: speccer-step
+    agent: # runs an agent
+      name: speccer-agent # name of the Agent
+      prompt: "Generate a spec for this idea (check args for idea)." # optional additional prompt, beyond agent definition
+      args: # agents can be passed args exactly the same way as tools, this is "agents as tools" pattern
+      # as an example, the idea could be passed as an arg.
+      - name: idea
+        value: "$(IDEA)" # interpolated from Loop env, just like other places above
+    pass:
+      next: return
+    fail:
+      next: retry # retry is a keyword that just keeps repeating the step until it succeeds
+```
+
 ## Tests
 
 * Unit tests using a mocked LLM client to simulate an agent interacting with tools and eventually calling `pass` or `fail`.
 * Tests verifying that only allowed tools are presented to the agent.
 * Tests verifying that inline prompts, agent definitions, arguments, and history are correctly assembled and passed to the agent.
+

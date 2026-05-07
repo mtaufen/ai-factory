@@ -37,7 +37,69 @@ Create Go structs for the four main resources using `factory.ai.gke.io/v1alpha1`
 ### Variable Interpolation
 Create an interpolation utility `ExpandVariables(input string, args map[string]string) string`. It should replace instances of `$(VAR)` in strings using the provided map of arguments. If a variable is not defined, it should evaluate to an empty string.
 
+## Examples
+
+```yaml
+kind: Run
+apiVersion: factory.ai.gke.io/v1alpha1
+metadata:
+  name: spec-developer-12345
+spec:
+  globalMaxSteps: 1000 # global limit on max steps, accounted recursively for all loops and sub-loops. This is different from Loop maxSteps which is only 1 level deep, for that specific loop.
+  start: spec-review-main # name of the entrypoint Loop
+  args: # args passed to start. Semantics same as K8s env vars and supports downward API semantics too.
+  - name: IDEA
+    value: "I want to build an agent to do X"
+  - name: REPO_URL
+    value: "https://www.github.com/user/repo"
+# convention: passing runs exit with code 0, failing runs exit with nonzero code
+---
+kind: Loop
+apiVersion: factory.ai.gke.io/v1alpha1
+metadata:
+  name: spec-review-main
+spec:
+  start: clone-step
+  steps:
+  - name: clone-step
+    mcp: # calls an MCP tool directly
+      name: git-mcp # name of the mcp server
+      tool: clone_repository # name of the tool
+      args: # mcp tool arguments
+      - name: remote # argument name
+        value: "$(REPO_URL)" # value interpolated from args, in this case configured by Run
+    pass: # what to do on pass
+      next: spec-review-step # step to move on to on pass
+      message: "cloned $(REPO_URL) successfully" # message passed to the next step
+      history: none # whether to forward context, default is "none" to start next step with fresh context
+    fail: # what to do on fail
+      next: return # return is a reserved keyword that returns message and history to the parent
+      message: "failed to clone $(REPO_URL)" # failure message to pass to next step
+      history: full # passes the full history from this step to the next step
+---
+kind: Agent
+apiVersion: factory.ai.gke.io/v1alpha1
+metadata:
+  name: speccer-agent
+spec:
+  path: /etc/agents/speccer/agent.md # path to agent.md definition
+  tools:
+  - mcp: 
+      name: dev-mcp # name of MCP server
+      tools: # allowlist of tools
+      - name: ReadFile
+      - name: WriteFile
+---
+kind: LocalMCPServer # identifies where to find a local MCP server; the server itself is configured externally
+apiVersion: factory.ai.gke.io/v1alpha1
+metadata:
+  name: git-mcp
+spec:
+  pipe: /var/run/mcp/git-mcp
+```
+
 ## Tests
 
 * Unit tests for YAML unmarshaling of each type, using snippets from `ideas/loop.md` as test cases.
 * Unit tests for `ExpandVariables` with various combinations of defined, undefined, and malformed variables.
+
