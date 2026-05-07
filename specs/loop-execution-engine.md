@@ -28,12 +28,11 @@ The Loop Execution Engine is the core state machine responsible for processing a
 
 ### State Machine Runner
 Create a `Runner` struct instantiated with the loaded `Run` and a registry of available `Loop`s.
-
-*   **`ExecuteLoop(loopName string, args map[string]string) error`**: Starts execution at the loop's `spec.start` step.
-*   **Transitions**: After a step executes, it returns a boolean (pass/fail) and a message. The runner uses the step's `pass` or `fail` configuration to determine the next step:
+*   **`ExecuteLoop(loopName string, args map[string]string) (bool, string, error)`**: Starts execution at the loop's `spec.start` step, returning pass/fail status, the final message, and any execution errors.
+*   **Transitions**: After a step executes, it evaluates to a boolean (pass/fail) and a message. The runner uses the step's `pass` or `fail` configuration to determine the next step:
     *   If `next` is a step name: Transition to that step.
     *   If `next` is `retry`: Re-run the current step.
-    *   If `next` is `return`: Exit the current `ExecuteLoop` call and return control to the parent (or finish the `Run` if it's the root loop).
+    *   If `next` is `return`: Exit the current `ExecuteLoop` call and return the current pass/fail status and message to the parent loop (or finish the `Run` if it's the root loop).
 *   **Variable Scope**: Steps can pass args down. The args map should be interpolated against the current scope before being passed.
 
 ### Execution Limits
@@ -43,6 +42,8 @@ The `Runner` must maintain two counters:
 
 ### Nested Loops
 When a step has a `loop` action, `ExecuteLoop` is called recursively with the nested loop's name and interpolated arguments.
+
+
 
 ## Examples
 

@@ -27,12 +27,114 @@ Defines the core Kubernetes Resource Model (KRM) API types and variable interpol
 ### Go Structs
 Create Go structs for the four main resources using `factory.ai.gke.io/v1alpha1` style schema.
 
-*   **`Run`**: Represents an execution instance. Should have `spec.globalMaxSteps` (int), `spec.start` (string), and `spec.args` (list of name/value pairs).
-*   **`Loop`**: A composable control flow primitive. Should have `spec.start` (string), `spec.maxSteps` (int), and `spec.steps` (list of Step).
-    *   `Step`: Has `name`, `pass` (NextAction), `fail` (NextAction), and an action which can be one of: `mcp`, `loop`, or `agent`.
-    *   `NextAction`: Has `next` (string keyword like `return`, `retry`, or a step name), `message` (string), and `history` (enum: `none`, `full`, `summary`).
-*   **`Agent`**: Defines an LLM agent. Has `spec.path` (string to agent.md) and `spec.tools` (allowlist of MCP servers and tools).
-*   **`LocalMCPServer`**: Configuration for a local MCP server. Has `spec.pipe` (string pointing to a named pipe).
+```go
+package apitypes
+
+import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+type Run struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+	Spec              RunSpec `json:"spec"`
+}
+
+type RunSpec struct {
+	GlobalMaxSteps int        `json:"globalMaxSteps"`
+	Start          string     `json:"start"`
+	Args           []Argument `json:"args,omitempty"`
+}
+
+type Argument struct {
+	Name  string `json:"name"`
+	Value string `json:"value"`
+}
+
+type Loop struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+	Spec              LoopSpec `json:"spec"`
+}
+
+type LoopSpec struct {
+	Start    string `json:"start"`
+	MaxSteps int    `json:"maxSteps,omitempty"`
+	Steps    []Step `json:"steps"`
+}
+
+type Step struct {
+	Name  string       `json:"name"`
+	MCP   *MCPAction   `json:"mcp,omitempty"`
+	Loop  *LoopAction  `json:"loop,omitempty"`
+	Agent *AgentAction `json:"agent,omitempty"`
+	Pass  NextAction   `json:"pass"`
+	Fail  NextAction   `json:"fail"`
+}
+
+type MCPAction struct {
+	Name string     `json:"name"`
+	Tool string     `json:"tool"`
+	Args []Argument `json:"args,omitempty"`
+}
+
+type LoopAction struct {
+	Name string     `json:"name"`
+	Args []Argument `json:"args,omitempty"`
+}
+
+type AgentAction struct {
+	Name   string     `json:"name"`
+	Prompt string     `json:"prompt,omitempty"`
+	Args   []Argument `json:"args,omitempty"`
+}
+
+type HistoryMode string
+
+const (
+	HistoryNone    HistoryMode = "none"
+	HistoryFull    HistoryMode = "full"
+	HistorySummary HistoryMode = "summary"
+)
+
+type NextAction struct {
+	Next    string      `json:"next"`
+	Message string      `json:"message,omitempty"`
+	History HistoryMode `json:"history,omitempty"`
+}
+
+type Agent struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+	Spec              AgentSpec `json:"spec"`
+}
+
+type AgentSpec struct {
+	Path  string         `json:"path"`
+	Tools []ToolProvider `json:"tools,omitempty"`
+}
+
+type ToolProvider struct {
+	MCP *MCPToolSet `json:"mcp,omitempty"`
+}
+
+type MCPToolSet struct {
+	Name  string       `json:"name"`
+	Tools []ToolConfig `json:"tools"`
+}
+
+type ToolConfig struct {
+	Name string `json:"name"`
+}
+
+type LocalMCPServer struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+	Spec              LocalMCPServerSpec `json:"spec"`
+}
+
+type LocalMCPServerSpec struct {
+	Pipe string `json:"pipe"`
+}
+```
 
 ### Variable Interpolation
 Create an interpolation utility `ExpandVariables(input string, args map[string]string) string`. It should replace instances of `$(VAR)` in strings using the provided map of arguments. If a variable is not defined, it should evaluate to an empty string.

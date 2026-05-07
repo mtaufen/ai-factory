@@ -28,11 +28,11 @@ Implements context and history forwarding between steps in the loop execution en
 Define a generic `History` struct or type alias (e.g., a slice of `Message` structs or just structured strings) to represent the context of execution up to that point.
 
 ### Forwarding Logic
-Within the `Runner`'s transition logic (from `loop-execution-engine`), modify it to carry a `currentHistory` object.
-When transitioning from `Step A` to `Step B`:
+Within the `Runner`'s transition logic (from `loop-execution-engine`), modify `ExecuteLoop` to maintain a `currentHistory` object, and return it along with pass/fail and message: `ExecuteLoop(...) (bool, string, History, error)`.
+When transitioning from `Step A` to `Step B` (or returning to the parent):
 1.  Check the `history` field in `Step A`'s outcome (`pass` or `fail`).
-2.  If `history: none` (default), clear the `currentHistory` before starting `Step B`.
-3.  If `history: full`, append the new messages from `Step A` to `currentHistory` and pass it to `Step B`.
+2.  If `history: none` (default), clear the `currentHistory` before starting `Step B` (or return an empty History if returning).
+3.  If `history: full`, append the new messages from `Step A` to `currentHistory` and pass it to `Step B` (or return it).
 4.  If `history: summary`, invoke an LLM summarization service that takes the `currentHistory` and `Step A`'s new messages, generates a concise text summary, and creates a new `currentHistory` containing only the summary.
 
 ### Summarization Service
