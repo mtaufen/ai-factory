@@ -1,0 +1,22 @@
+---
+name: loop-api-types-structs
+spec: loop-api-types
+deps: []
+out:
+  - factory/pkg/runtime/api/doc.go
+  - factory/pkg/runtime/api/types.go
+---
+name: loop-api-types-parser
+spec: loop-api-types
+deps:
+  - loop-api-types-structs
+out:
+  - factory/pkg/runtime/api/parser.go
+  - factory/pkg/runtime/api/parser_test.go
+---
+name: loop-api-types-vars
+spec: loop-api-types
+deps: []
+out:
+  - factory/pkg/runtime/api/vars.go
+  - factory/pkg/runtime/api/vars_test.go

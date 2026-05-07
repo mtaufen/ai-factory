@@ -36,7 +36,7 @@ Create Go structs for the four main resources using `factory.ai.gke.io/v1alpha1`
 *   **YAML Parsing**: Specify that the loader must use Kubernetes-native decoders (e.g., `k8s.io/apimachinery/pkg/util/yaml.NewYAMLOrJSONDecoder`) to support reading multi-document YAML files into these structs.
 
 ```go
-package apitypes
+package api
 
 import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
