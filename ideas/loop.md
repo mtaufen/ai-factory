@@ -2,6 +2,11 @@ Break this down into a set of specs using .agents/speccer.
 All specs must require following pristine Go and Kubernetes style.
 All specs must require test quality on par with the Go standard library.
 
+## Implementation Frameworks
+
+- The loop itself will be implemented using [adk-go](https://github.com/google/adk-go).
+- When we eventually get to the operator (note we are not building it yet), we will use [controller-runtime](https://github.com/kubernetes-sigs/controller-runtime).
+
 ## Tools
 
 All tools must be provided via local MCP servers that communicate
