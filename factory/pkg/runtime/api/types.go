@@ -1,6 +1,10 @@
 package api
 
-import metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+import (
+	"errors"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
 
 // +k8s:deepcopy-gen=true
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -87,8 +91,37 @@ type Agent struct {
 }
 
 type AgentSpec struct {
-	Path  string         `json:"path"`
-	Tools []ToolProvider `json:"tools,omitempty"`
+	Prompt      *PromptSource  `json:"prompt,omitempty"`
+	Tools       []ToolProvider `json:"tools,omitempty"`
+	SubAgents   []SubAgent     `json:"subAgents,omitempty"` // References to other api.Agent resources by name
+	Temperature *float32       `json:"temperature,omitempty"` // Defaults to reasonable ADK value if nil
+	MaxTokens   *int32         `json:"maxTokens,omitempty"`   // Defaults to unlimited/maximum if nil
+}
+
+type SubAgent struct {
+	Name string `json:"name"`
+}
+
+type PromptSource struct {
+	Value        string        `json:"value,omitempty"`        // Inline raw prompt text
+	Path         string        `json:"path,omitempty"`         // Path to a local file
+	ConfigMapRef *ConfigMapRef `json:"configMapRef,omitempty"` // Reference to a ConfigMap resource containing the prompt
+}
+
+// Supported in the API, but NOT implemented in `factory runtime loop` for local files.
+// If provided in local file, must error.
+// This is only for higher level use by operators, and those operators will need to
+// translate the configmap to inline when launching the actual loop.
+type ConfigMapRef struct {
+	Name string `json:"name"` // Required
+	Key  string `json:"key"`  // Required
+}
+
+func (a *Agent) Validate() error {
+	if a.Spec.Prompt != nil && a.Spec.Prompt.ConfigMapRef != nil {
+		return errors.New("ConfigMapRef is not supported for local files")
+	}
+	return nil
 }
 
 type ToolProvider struct {

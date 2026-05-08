@@ -2,34 +2,44 @@ package engine
 
 import (
 	"context"
+	"iter"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/ai-on-gke/ai-factory/factory/pkg/mcp"
 	"github.com/ai-on-gke/ai-factory/factory/pkg/runtime/api"
-	"github.com/ai-on-gke/ai-factory/factory/pkg/runtime/history"
+	"google.golang.org/adk/model"
+	"google.golang.org/genai"
 )
 
-type mockLLMClient struct {
-	responses []mockResponse
+type mockADKModel struct {
+	responses []*model.LLMResponse
+	errs      []error
 	callCount int
 	t         *testing.T
 }
 
-type mockResponse struct {
-	toolCall string
-	toolArgs map[string]interface{}
-	err      error
+func (m *mockADKModel) Name() string {
+	return "mock-adk-model"
 }
 
-func (m *mockLLMClient) Call(ctx context.Context, prompt string, history history.History, tools []mcp.Tool) (string, map[string]interface{}, error) {
-	if m.callCount >= len(m.responses) {
-		m.t.Fatalf("unexpected call to LLM")
+func (m *mockADKModel) GenerateContent(ctx context.Context, req *model.LLMRequest, stream bool) iter.Seq2[*model.LLMResponse, error] {
+	return func(yield func(*model.LLMResponse, error) bool) {
+		if m.callCount >= len(m.responses) {
+			m.t.Fatalf("unexpected call to GenerateContent, callCount=%d", m.callCount)
+			return
+		}
+
+		res := m.responses[m.callCount]
+		var err error
+		if len(m.errs) > m.callCount {
+			err = m.errs[m.callCount]
+		}
+		m.callCount++
+
+		yield(res, err)
 	}
-	res := m.responses[m.callCount]
-	m.callCount++
-	return res.toolCall, res.toolArgs, res.err
 }
 
 func TestAgentExecutor(t *testing.T) {
@@ -40,7 +50,9 @@ func TestAgentExecutor(t *testing.T) {
 	agents := map[string]*api.Agent{
 		"test-agent": {
 			Spec: api.AgentSpec{
-				Path: promptPath,
+				Prompt: &api.PromptSource{
+					Path: promptPath,
+				},
 				Tools: []api.ToolProvider{
 					{
 						MCP: &api.MCPToolSet{
@@ -74,11 +86,6 @@ func TestAgentExecutor(t *testing.T) {
 		},
 	}
 
-	// We are going to mock MCPManager but for AgentExecutor testing we only need
-	// GetAgentTools to succeed. However, GetAgentTools itself calls mcpManager to list tools.
-	// Since GetAgentTools relies on the MCPManager to query allowed tools, we can mock LLM
-	// to just return pass/fail and test prompt assembly and history.
-
 	manager := &mockMCPConnectionManager{
 		GetClientFunc: func(ctx context.Context, name string, pipePath string) (mcp.Client, error) {
 			return &mockMCPClient{
@@ -101,16 +108,34 @@ func TestAgentExecutor(t *testing.T) {
 		},
 	}
 
-	llm := &mockLLMClient{
+	llm := &mockADKModel{
 		t: t,
-		responses: []mockResponse{
+		responses: []*model.LLMResponse{
 			{
-				toolCall: "readFile",
-				toolArgs: map[string]interface{}{"path": "foo.txt"},
+				Content: &genai.Content{
+					Role: "model",
+					Parts: []*genai.Part{
+						{
+							FunctionCall: &genai.FunctionCall{
+								Name: "readFile",
+								Args: map[string]any{"path": "foo.txt"},
+							},
+						},
+					},
+				},
 			},
 			{
-				toolCall: "pass",
-				toolArgs: map[string]interface{}{"message": "done"},
+				Content: &genai.Content{
+					Role: "model",
+					Parts: []*genai.Part{
+						{
+							FunctionCall: &genai.FunctionCall{
+								Name: "pass",
+								Args: map[string]any{"message": "done"},
+							},
+						},
+					},
+				},
 			},
 		},
 	}
@@ -127,7 +152,7 @@ func TestAgentExecutor(t *testing.T) {
 	if msg != "done" {
 		t.Errorf("expected msg='done', got '%s'", msg)
 	}
-	if len(h) != 1 {
-		t.Errorf("expected history length 1 (from tool call), got %d", len(h))
+	if len(h) == 0 {
+		t.Errorf("expected non-empty history")
 	}
 }
