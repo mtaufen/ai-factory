@@ -22,11 +22,11 @@ The current Loop Execution Engine implements a custom, simplified LLM loop withi
 
 ## Non-Goals
 
-* Changing the API surface: The `api.Agent`, `api.Loop`, and `api.Step` types and YAML schemas MUST remain untouched.
 * Modifying MCP Client Logic: `factory/pkg/mcp/client.go` will remain as is.
 
 ## Key Requirements
 
+0. **API Compatibility**: Our high level yaml APIs must retain the same behavior, for the most part.
 1.  **Tool Adaptation**: We must wrap our `mcp.Tool` schema outputs and `CallTool` execution paths into ADK's `tool.Tool` interface (or more specifically `toolinternal.FunctionTool`) so that ADK can provide them to the model and parse the responses natively.
 2.  **Synthetic Tools via ADK**: Our custom `pass` and `fail` tools must be rewritten as ADK tools, ensuring that when the agent invokes them, we capture the message and short-circuit the ADK invocation so control yields back to the Loop Execution Engine.
 3.  **Mockability**: To satisfy unit testing without a live LLM API key, we must supply ADK with a mocked `model.LLM` implementation, or use a custom tool/callback structure in the tests to simulate the model's trajectory, replacing the current `LLMMockClient` interface.
@@ -34,19 +34,53 @@ The current Loop Execution Engine implements a custom, simplified LLM loop withi
 
 ## Design
 
-### 1. Tool Wrapping (`adk_tools.go`)
+### 1. API Schema Evolution (`api/types.go`)
+To fully support ADK's capabilities and provide better ergonomics, we will extend the `api.AgentSpec` struct. To maintain backward compatibility where possible, we will deprecate the top-level `path` field in favor of a structured `prompt` block, and add new optional fields for generation parameters and composition:
+```go
+type AgentSpec struct {
+	// Deprecated: use Prompt.Path instead.
+	Path        string         `json:"path,omitempty"`
+	Prompt      *PromptSource  `json:"prompt,omitempty"`
+	Tools       []ToolProvider `json:"tools,omitempty"`
+	SubAgents   []SubAgent     `json:"subAgents,omitempty"` // References to other api.Agent resources by name
+	Temperature *float32       `json:"temperature,omitempty"` // Defaults to reasonable ADK value if nil
+	MaxTokens   *int32         `json:"maxTokens,omitempty"`   // Defaults to unlimited/maximum if nil
+}
+
+type SubAgent struct {
+	Name string `json:"name"`
+}
+
+type PromptSource struct {
+	Value     string `json:"value,omitempty"`     // Inline raw prompt text
+	Path      string `json:"path,omitempty"`      // Path to a local file
+	ConfigMapRef *ConfigMapRef `json:"configMapRef,omitempty"` // Reference to a ConfigMap resource containing the prompt
+}
+
+// Supported in the API, but NOT implemented in `factory runtime loop` for local files.
+// If provided in local file, must error.
+// This is only for higher level use by operators, and those operators will need to
+// translate the configmap to inline when launching the actual loop. 
+type ConfigMapRef struct {
+	Name string `json:"name"` // Required
+	Key  string `json:"key"` // Required
+}
+```
+
+### 2. Tool Wrapping (`adk_tools.go`)
 Instead of `GetAgentTools` returning raw `mcp.Tool` objects, we will create an adapter that implements ADK's `tool.Tool` and `toolinternal.FunctionTool` interfaces.
+*   **Note on existing SDKs**: The `google.golang.org/adk` package contains an existing MCP integration under `google.golang.org/adk/tool/mcptoolset`, which relies on `github.com/modelcontextprotocol/go-sdk`. If possible and compatible with our `api.Agent` definitions, we can utilize `mcptoolset.New()` and `github.com/modelcontextprotocol/go-sdk` directly to manage the MCP connection and tool translation.
 *   **Adapter Struct**: A struct holding the MCP tool schema and a reference to our `mcp.Client`.
 *   **`Declaration()`**: Returns a `genai.FunctionDeclaration` constructed from the `mcp.Tool`'s `InputSchema`.
 *   **`Run(ctx tool.Context, args any)`**: Unmarshals the args and forwards them to our `CallAgentTool` (or directly to the `mcp.Client`), returning the formatted output.
 
-### 2. Synthetic Control Tools
+### 3. Synthetic Control Tools
 Instead of explicitly checking `if toolCall == "pass"` in a custom loop, we will create two ADK `FunctionTool`s: `passTool` and `failTool`.
 *   These tools will take a `message` string argument.
 *   When executed, they will store the message in a side-channel (e.g., a shared state object in the context) and then trigger an immediate cancellation or invocation end (e.g., using `ctx.EndInvocation()`).
 *   Alternatively, they can just return the value, but we must use an `AfterToolCallback` or a similar hook in ADK to detect that a control tool was called and immediately halt the agent's turn.
 
-### 3. Agent Execution Migration (`agent_executor.go`)
+### 4. Agent Execution Migration (`agent_executor.go`)
 The `AgentExecutorImpl.Execute` method will be refactored as follows:
 *   **Initialize ADK Runner**: We will instantiate an ADK agent using `llmagent.New(cfg)`.
     *   `cfg.Model` will be the LLM model (can be injected as a dependency to support mocking).
@@ -56,10 +90,34 @@ The `AgentExecutorImpl.Execute` method will be refactored as follows:
 *   **Evaluate Result**: We will iterate over the returned `iter.Seq2[*session.Event, error]`. We look for the final event or the side-channel state set by the `pass`/`fail` tools to determine the boolean outcome and the message.
 *   **History**: We map the generated `session.Event` objects back to `history.Message` objects (Role "model" or "tool").
 
-### 4. Mocking ADK (`agent_executor_test.go`)
+### 5. Mocking ADK (`agent_executor_test.go`)
 Since ADK is designed to be model-agnostic, we can create a struct that implements the `model.LLM` interface defined in `google.golang.org/adk/model`.
 *   The mocked `GenerateContent` method will return a predefined sequence of `genai.FunctionCall` responses (to simulate the LLM requesting a tool) and eventually a call to `pass` or `fail`.
 *   This replaces our bespoke `LLMMockClient` with ADK's native dependency injection model.
+
+## Examples
+
+```yaml
+kind: Agent
+apiVersion: factory.ai.gke.io/v1alpha1
+metadata:
+  name: complex-speccer-agent
+spec:
+  prompt:
+    value: |
+      You are an expert system architect. Review the provided idea and draft a technical specification.
+      Ensure it adheres to standard formatting.
+  temperature: 0.4
+  maxTokens: 8192
+  tools:
+  - mcp: 
+      name: dev-mcp
+      tools:
+      - name: ReadFile
+      - name: WriteFile
+  subAgents:
+  - name: spec-validator-agent # Can delegate validation tasks natively via ADK
+```
 
 ## Tests
 
