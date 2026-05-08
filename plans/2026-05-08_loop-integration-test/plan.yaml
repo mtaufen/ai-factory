@@ -1,0 +1,12 @@
+name: mock-mcp-servers
+spec: loop-integration-test
+deps: []
+out:
+  - factory/pkg/runtime/engine/mock_mcp_test.go
+---
+name: test-loop-pod
+spec: loop-integration-test
+deps:
+  - mock-mcp-servers
+out:
+  - factory/pkg/runtime/engine/integration_test.go
