@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 func TestParse(t *testing.T) {
@@ -74,76 +75,91 @@ spec:
 	}
 
 	// 1. Run
-	run, ok := objects[0].(*Run)
-	if !ok {
-		t.Fatalf("expected first object to be *Run, got %T", objects[0])
+	run := objects[0]
+	if run.GetKind() != "Run" {
+		t.Fatalf("expected Run kind, got %v", run.GetKind())
 	}
-	if run.Name != "spec-developer-12345" {
-		t.Errorf("run.Name = %v, want %v", run.Name, "spec-developer-12345")
+	if run.GetName() != "spec-developer-12345" {
+		t.Errorf("run.GetName() = %v, want %v", run.GetName(), "spec-developer-12345")
 	}
-	if run.Spec.GlobalMaxSteps != 1000 {
-		t.Errorf("run.Spec.GlobalMaxSteps = %v, want %v", run.Spec.GlobalMaxSteps, 1000)
+	steps, _, _ := unstructured.NestedInt64(run.Object, "spec", "globalMaxSteps")
+	if steps != 1000 {
+		t.Errorf("globalMaxSteps = %v, want %v", steps, 1000)
 	}
 
 	// 2. Loop
-	loop, ok := objects[1].(*Loop)
+	loop := objects[1]
+	if loop.GetKind() != "Loop" {
+		t.Fatalf("expected Loop kind, got %v", loop.GetKind())
+	}
+	if loop.GetName() != "spec-review-main" {
+		t.Errorf("loop.GetName() = %v, want %v", loop.GetName(), "spec-review-main")
+	}
+	loopSteps, _, _ := unstructured.NestedSlice(loop.Object, "spec", "steps")
+	if len(loopSteps) != 1 {
+		t.Fatalf("loop steps len = %v, want 1", len(loopSteps))
+	}
+	stepMap, ok := loopSteps[0].(map[string]interface{})
 	if !ok {
-		t.Fatalf("expected second object to be *Loop, got %T", objects[1])
+		t.Fatalf("expected step to be map[string]interface{}, got %T", loopSteps[0])
 	}
-	if loop.Name != "spec-review-main" {
-		t.Errorf("loop.Name = %v, want %v", loop.Name, "spec-review-main")
-	}
-	if len(loop.Spec.Steps) != 1 {
-		t.Fatalf("loop.Spec.Steps len = %v, want 1", len(loop.Spec.Steps))
-	}
-	if loop.Spec.Steps[0].Name != "clone-step" {
-		t.Errorf("loop.Spec.Steps[0].Name = %v, want %v", loop.Spec.Steps[0].Name, "clone-step")
+	if stepMap["name"] != "clone-step" {
+		t.Errorf("step name = %v, want clone-step", stepMap["name"])
 	}
 
 	// 3. Agent
-	agent, ok := objects[2].(*Agent)
-	if !ok {
-		t.Fatalf("expected third object to be *Agent, got %T", objects[2])
+	agent := objects[2]
+	if agent.GetKind() != "Agent" {
+		t.Fatalf("expected Agent kind, got %v", agent.GetKind())
 	}
-	if agent.Name != "speccer-agent" {
-		t.Errorf("agent.Name = %v, want %v", agent.Name, "speccer-agent")
+	if agent.GetName() != "speccer-agent" {
+		t.Errorf("agent.GetName() = %v, want %v", agent.GetName(), "speccer-agent")
 	}
-	if agent.Spec.Path != "/etc/agents/speccer/agent.md" {
-		t.Errorf("agent.Spec.Path = %v, want %v", agent.Spec.Path, "/etc/agents/speccer/agent.md")
+	path, _, _ := unstructured.NestedString(agent.Object, "spec", "path")
+	if path != "/etc/agents/speccer/agent.md" {
+		t.Errorf("agent path = %v, want /etc/agents/speccer/agent.md", path)
 	}
-	if len(agent.Spec.Tools) != 1 {
-		t.Fatalf("agent.Spec.Tools len = %v, want 1", len(agent.Spec.Tools))
+	tools, _, _ := unstructured.NestedSlice(agent.Object, "spec", "tools")
+	if len(tools) != 1 {
+		t.Fatalf("agent tools len = %v, want 1", len(tools))
 	}
 
 	// 4. LocalMCPServer
-	mcp, ok := objects[3].(*LocalMCPServer)
-	if !ok {
-		t.Fatalf("expected fourth object to be *LocalMCPServer, got %T", objects[3])
+	mcp := objects[3]
+	if mcp.GetKind() != "LocalMCPServer" {
+		t.Fatalf("expected LocalMCPServer kind, got %v", mcp.GetKind())
 	}
-	if mcp.Name != "git-mcp" {
-		t.Errorf("mcp.Name = %v, want %v", mcp.Name, "git-mcp")
+	if mcp.GetName() != "git-mcp" {
+		t.Errorf("mcp.GetName() = %v, want %v", mcp.GetName(), "git-mcp")
 	}
-	if mcp.Spec.Pipe != "/var/run/mcp/git-mcp" {
-		t.Errorf("mcp.Spec.Pipe = %v, want %v", mcp.Spec.Pipe, "/var/run/mcp/git-mcp")
+	pipe, _, _ := unstructured.NestedString(mcp.Object, "spec", "pipe")
+	if pipe != "/var/run/mcp/git-mcp" {
+		t.Errorf("mcp pipe = %v, want /var/run/mcp/git-mcp", pipe)
 	}
 }
 
-func TestParseStrict(t *testing.T) {
+func TestParseGeneric(t *testing.T) {
 	yamlData := `
-kind: Run
+kind: SomeCustomKind
 apiVersion: factory.ai.gke.io/v1alpha1
 metadata:
-  name: strict-test
+  name: dynamic-test
 spec:
-  globalMaxSteps: 1000
-  start: spec-review-main
-  unknownField: "this should fail"
+  unknownField: "this is perfectly fine"
 `
-	_, err := Parse(strings.NewReader(yamlData))
-	if err == nil {
-		t.Fatalf("expected Parse() to fail on unknown field, but it succeeded")
+	objects, err := Parse(strings.NewReader(yamlData))
+	if err != nil {
+		t.Fatalf("expected Parse() to succeed on generic resources, but it failed: %v", err)
 	}
-	if !strings.Contains(err.Error(), "unknown field") {
-		t.Errorf("expected error to mention 'unknown field', got: %v", err)
+	if len(objects) != 1 {
+		t.Fatalf("expected 1 object, got %d", len(objects))
+	}
+	obj := objects[0]
+	if obj.GetKind() != "SomeCustomKind" {
+		t.Errorf("expected SomeCustomKind, got %v", obj.GetKind())
+	}
+	val, _, _ := unstructured.NestedString(obj.Object, "spec", "unknownField")
+	if val != "this is perfectly fine" {
+		t.Errorf("expected unknownField to be preserved, got %v", val)
 	}
 }
