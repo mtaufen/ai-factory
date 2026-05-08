@@ -10,7 +10,8 @@ import (
 )
 
 type mockMCPClient struct {
-	CallToolFunc func(ctx context.Context, name string, args map[string]interface{}) (*mcp.ToolResult, error)
+	CallToolFunc  func(ctx context.Context, name string, args map[string]interface{}) (*mcp.ToolResult, error)
+	ListToolsFunc func(ctx context.Context) (*mcp.ListToolsResult, error)
 }
 
 func (m *mockMCPClient) Connect(ctx context.Context) error {
@@ -26,6 +27,13 @@ func (m *mockMCPClient) CallTool(ctx context.Context, name string, args map[stri
 		return m.CallToolFunc(ctx, name, args)
 	}
 	return &mcp.ToolResult{}, nil
+}
+
+func (m *mockMCPClient) ListTools(ctx context.Context) (*mcp.ListToolsResult, error) {
+	if m.ListToolsFunc != nil {
+		return m.ListToolsFunc(ctx)
+	}
+	return &mcp.ListToolsResult{}, nil
 }
 
 type mockMCPConnectionManager struct {

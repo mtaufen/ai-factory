@@ -54,11 +54,24 @@ type ToolContent struct {
 	Text string `json:"text"`
 }
 
+// Tool represents a tool schema.
+type Tool struct {
+	Name        string                 `json:"name"`
+	Description string                 `json:"description,omitempty"`
+	InputSchema map[string]interface{} `json:"inputSchema,omitempty"`
+}
+
+// ListToolsResult represents the result of tools/list.
+type ListToolsResult struct {
+	Tools []Tool `json:"tools"`
+}
+
 // Client interface for MCP.
 type Client interface {
 	Connect(ctx context.Context) error
 	Close() error
 	CallTool(ctx context.Context, name string, args map[string]interface{}) (*ToolResult, error)
+	ListTools(ctx context.Context) (*ListToolsResult, error)
 }
 
 type client struct {
@@ -217,6 +230,66 @@ func (c *client) CallTool(ctx context.Context, name string, args map[string]inte
 			return nil, fmt.Errorf("failed to unmarshal tool result: %w", err)
 		}
 		return &toolRes, nil
+	}
+}
+
+func (c *client) ListTools(ctx context.Context) (*ListToolsResult, error) {
+	c.mu.Lock()
+	file := c.file
+	c.mu.Unlock()
+
+	if file == nil {
+		return nil, fmt.Errorf("not connected")
+	}
+
+	if errVal := c.readErr.Load(); errVal != nil {
+		return nil, errVal.(error)
+	}
+
+	id := atomic.AddUint64(&c.nextID, 1)
+	req := JSONRPCRequest{
+		JSONRPC: "2.0",
+		Method:  "tools/list",
+		ID:      id,
+	}
+
+	ch := make(chan *JSONRPCResponse, 1)
+	c.pMu.Lock()
+	c.pending[id] = ch
+	c.pMu.Unlock()
+
+	defer func() {
+		c.pMu.Lock()
+		delete(c.pending, id)
+		c.pMu.Unlock()
+	}()
+
+	reqBytes, err := json.Marshal(req)
+	if err != nil {
+		return nil, err
+	}
+	reqBytes = append(reqBytes, '\n')
+
+	c.mu.Lock()
+	_, err = file.Write(reqBytes)
+	c.mu.Unlock()
+
+	if err != nil {
+		return nil, fmt.Errorf("write error: %w", err)
+	}
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case res := <-ch:
+		if res.Error != nil {
+			return nil, res.Error
+		}
+		var listRes ListToolsResult
+		if err := json.Unmarshal(res.Result, &listRes); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal list tools result: %w", err)
+		}
+		return &listRes, nil
 	}
 }
 

@@ -115,6 +115,11 @@ func (r *Runner) ExecuteLoop(ctx context.Context, loopName string, args map[stri
 				return false, "", nil, fmt.Errorf("no mcp executor provided for step %s", step.Name)
 			}
 			pass, message, newMessages, err = r.MCPExecutor.Execute(ctx, step, frame.Args, frame.CurrentHistory)
+		} else if step.Agent != nil {
+			if r.AgentExecutor == nil {
+				return false, "", nil, fmt.Errorf("no agent executor provided for step %s", step.Name)
+			}
+			pass, message, newMessages, err = r.AgentExecutor.Execute(ctx, step, frame.Args, frame.CurrentHistory)
 		} else {
 			if r.Executor == nil {
 				return false, "", nil, fmt.Errorf("no executor provided for step %s", step.Name)

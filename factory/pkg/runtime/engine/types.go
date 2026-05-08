@@ -10,12 +10,13 @@ import (
 // Runner represents the Loop Execution Engine state machine.
 // It tracks the Run state, available Loops, and global execution steps.
 type Runner struct {
-	Run         *api.Run
-	Loops       map[string]*api.Loop
-	GlobalSteps int
-	Executor    StepExecutor
-	MCPExecutor StepExecutor
-	Summarizer  history.Summarizer
+	Run           *api.Run
+	Loops         map[string]*api.Loop
+	GlobalSteps   int
+	Executor      StepExecutor
+	MCPExecutor   StepExecutor
+	AgentExecutor StepExecutor
+	Summarizer    history.Summarizer
 }
 
 // StepExecutor defines the interface for executing a single step.
