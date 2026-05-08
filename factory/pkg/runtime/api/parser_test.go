@@ -163,3 +163,29 @@ spec:
 		t.Errorf("expected unknownField to be preserved, got %v", val)
 	}
 }
+
+func TestParse_DecodeError(t *testing.T) {
+	_, err := Parse(strings.NewReader("kind: [invalid yaml"))
+	if err == nil {
+		t.Fatal("expected Parse() to fail on invalid YAML")
+	}
+}
+
+func TestParse_NullDoc(t *testing.T) {
+	objs, err := Parse(strings.NewReader("null\n---\nkind: Valid\n"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(objs) != 1 {
+		t.Fatalf("expected 1 object, got %d", len(objs))
+	}
+}
+
+func TestParse_UnmarshalError(t *testing.T) {
+	// Valid YAML/JSON literal, but not an object
+	_, err := Parse(strings.NewReader("\"just a string literal\""))
+	if err == nil {
+		t.Fatal("expected Parse() to fail on non-object JSON")
+	}
+}
+

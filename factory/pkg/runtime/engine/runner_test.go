@@ -19,6 +19,12 @@ func (m *mockSummarizer) Summarize(ctx context.Context, current history.History,
 	return history.History{{Role: "system", Content: "mocked summary"}}, nil
 }
 
+type errSummarizer struct{}
+
+func (e *errSummarizer) Summarize(ctx context.Context, current history.History, newMessages history.History) (history.History, error) {
+	return nil, errors.New("summarizer exploded")
+}
+
 type stubExecutor struct {
 	results map[string]struct {
 		pass    bool
@@ -80,6 +86,7 @@ func TestRunner_ExecuteLoop(t *testing.T) {
 		run         *api.Run
 		loops       map[string]*api.Loop
 		executor    StepExecutor
+		mcpExecutor StepExecutor
 		startLoop   string
 		startArgs   map[string]string
 		cancelCtx   bool
@@ -486,6 +493,83 @@ func TestRunner_ExecuteLoop(t *testing.T) {
 			startLoop: "main",
 			wantErr:   "next step not specified in step step1",
 		},
+		{
+			name: "NoMCPExecutor",
+			run:  &api.Run{},
+			loops: map[string]*api.Loop{
+				"main": {
+					Spec: api.LoopSpec{
+						Start: "step1",
+						Steps: []api.Step{
+							{Name: "step1", MCP: &api.MCPAction{Name: "test"}},
+						},
+					},
+				},
+			},
+			startLoop: "main",
+			wantErr:   "no mcp executor provided for step step1",
+		},
+		{
+			name: "MCPExecutorSuccess",
+			run:  &api.Run{},
+			loops: map[string]*api.Loop{
+				"main": {
+					Spec: api.LoopSpec{
+						Start: "step1",
+						Steps: []api.Step{
+							{Name: "step1", MCP: &api.MCPAction{Name: "test"}, Pass: api.NextAction{Next: "return"}},
+						},
+					},
+				},
+			},
+			mcpExecutor: &stubExecutor{
+				results: map[string]struct {
+					pass    bool
+					message string
+					err     error
+				}{
+					"step1": {pass: true, message: "mcp success"},
+				},
+			},
+			startLoop: "main",
+			wantPass:  true,
+			wantMsg:   "mcp success",
+		},
+		{
+			name: "HistorySummaryNoSummarizer",
+			run:  &api.Run{},
+			loops: map[string]*api.Loop{
+				"main": {
+					Spec: api.LoopSpec{
+						Start: "step1",
+						Steps: []api.Step{
+							{Name: "step1", Pass: api.NextAction{Next: "return", History: api.HistorySummary}},
+						},
+					},
+				},
+			},
+			executor:  &stubExecutor{},
+			startLoop: "main",
+			wantErr:   "no summarizer provided for history: summary",
+		},
+		{
+			name: "HistorySummaryError",
+			run:  &api.Run{},
+			loops: map[string]*api.Loop{
+				"main": {
+					Spec: api.LoopSpec{
+						Start: "step1",
+						Steps: []api.Step{
+							{Name: "step1", Pass: api.NextAction{Next: "return", History: api.HistorySummary}},
+						},
+					},
+				},
+			},
+			executor:   &stubExecutor{},
+			summarizer: &errSummarizer{},
+			startLoop:  "main",
+			wantErr:    "summarization failed: summarizer exploded",
+		},
 	}
 
 	for _, tt := range tests {
@@ -494,6 +578,7 @@ func TestRunner_ExecuteLoop(t *testing.T) {
 				Run:        tt.run,
 				Loops:      tt.loops,
 				Executor:   tt.executor,
+				MCPExecutor: tt.mcpExecutor,
 				Summarizer: tt.summarizer,
 			}
 
