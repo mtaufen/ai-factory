@@ -1,0 +1,6 @@
+name: engine-runner-refactor
+spec: loop-execution-engine
+deps: []
+out:
+  - factory/pkg/runtime/engine/runner.go
+  - factory/pkg/runtime/engine/runner_test.go

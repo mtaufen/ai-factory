@@ -29,18 +29,22 @@ The Loop Execution Engine is the core state machine responsible for processing a
 *   **Strict Error vs. Failure Separation:** The state machine MUST differentiate between fatal system errors (which crash the `Run` and return a Go `error`) and graceful step failures (which set `pass = false` and trigger the `fail: next` loop transition).
 *   **Limit Enforcement:** The engine MUST track and strictly enforce both `globalMaxSteps` (across the entire `Run`) and `maxSteps` (for the current loop) to prevent infinite recursive loops.
 *   **Context Propagation:** A `context.Context` MUST be threaded through all step executions, and the state machine MUST abort immediately if the context is cancelled.
-*   **Cyclic Dependency Prevention:** While `globalMaxSteps` prevents infinite execution, the engine SHOULD also implement depth limits or cyclic detection on nested `loop` actions to prevent call stack overflows during deep recursion,
-or in general use an execution strategy that is guaranteed not to overflow.
+*   **Cyclic Dependency Prevention:** The engine MUST use an explicit stack frame (Virtual Machine style) execution model rather than Go runtime call stack recursion. This guarantees that deep recursion does not cause a Go call stack overflow. By using a controlled slice of frames, it can efficiently enforce a `MaxCallDepth` safely without panics.
 
 ## Design
 
 ### State Machine Runner
 Create a `Runner` struct instantiated with the loaded `Run` and a registry of available `Loop`s.
-*   **`ExecuteLoop(loopName string, args map[string]string) (bool, string, error)`**: Starts execution at the loop's `spec.start` step, returning pass/fail status, the final message, and any execution errors.
+*   **`ExecuteLoop(ctx context.Context, loopName string, args map[string]string) (bool, string, error)`**: Starts execution at the loop's `spec.start` step, returning pass/fail status, the final message, and any execution errors. Instead of using recursion, it implements a flat control loop managing an explicit `StackFrame` slice.
+*   **StackFrame**: A struct tracking the execution state:
+    *   `LoopName`: The name of the loop.
+    *   `StepName`: The current step.
+    *   `Args`: The variable scope for this loop instance.
+    *   `Steps`: The current step count for this loop instance.
 *   **Transitions**: After a step executes, it evaluates to a boolean (pass/fail) and a message. The runner uses the step's `pass` or `fail` configuration to determine the next step:
     *   If `next` is a step name: Transition to that step.
     *   If `next` is `retry`: Re-run the current step.
-    *   If `next` is `return`: Exit the current `ExecuteLoop` call and return the current pass/fail status and message to the parent loop (or finish the `Run` if it's the root loop).
+    *   If `next` is `return`: Pop the current loop from the stack and return the current pass/fail status and message to the parent loop's frame (or exit `ExecuteLoop` if it's the root loop).
 *   **Variable Scope**: Steps can pass args down. The args map should be interpolated against the current scope before being passed.
 
 ### Execution Limits
@@ -49,7 +53,7 @@ The `Runner` must maintain two counters:
 *   Local `loopSteps`: An integer passed down or maintained in the call stack. Fails the specific loop if it exceeds `Loop.spec.maxSteps`.
 
 ### Nested Loops
-When a step has a `loop` action, `ExecuteLoop` is called recursively with the nested loop's name and interpolated arguments.
+When a step has a `loop` action, the runner MUST NOT recurse. Instead, it pushes the current `StackFrame` (parent state) to its tracking slice, and replaces the active context with a new `StackFrame` for the nested loop (interpolating the arguments). When the nested loop `return`s, it pops the parent frame from the stack and resumes it.
 
 ### Context and Cancellation
 The state machine can run for a long time. The Runner must accept a `context.Context` and pass it to all step executors. If the context is cancelled (e.g. via SIGINT), the runner must abort immediately and return the context error.

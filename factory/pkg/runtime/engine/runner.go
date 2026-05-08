@@ -9,52 +9,71 @@ import (
 
 const MaxCallDepth = 1000
 
-func (r *Runner) ExecuteLoop(ctx context.Context, loopName string, args map[string]string) (bool, string, error) {
-	return r.executeLoopWithDepth(ctx, loopName, args, 0)
+type StackFrame struct {
+	LoopName       string
+	StepName       string
+	Args           map[string]string
+	Steps          int
+	NestedReturned bool
 }
 
-func (r *Runner) executeLoopWithDepth(ctx context.Context, loopName string, args map[string]string, depth int) (bool, string, error) {
-	if depth > MaxCallDepth {
-		return false, "", fmt.Errorf("max call depth %d exceeded", MaxCallDepth)
-	}
-
+func (r *Runner) ExecuteLoop(ctx context.Context, loopName string, args map[string]string) (bool, string, error) {
 	loop, ok := r.Loops[loopName]
 	if !ok {
 		return false, "", fmt.Errorf("loop not found: %s", loopName)
 	}
 
-	steps := make(map[string]*api.Step)
-	for i := range loop.Spec.Steps {
-		s := &loop.Spec.Steps[i]
-		steps[s.Name] = s
+	stack := []*StackFrame{
+		{
+			LoopName: loopName,
+			StepName: loop.Spec.Start,
+			Args:     args,
+			Steps:    0,
+		},
 	}
-
-	currentStepName := loop.Spec.Start
-	loopSteps := 0
 
 	var lastPass bool
 	var lastMessage string
 
-	for {
+	for len(stack) > 0 {
 		select {
 		case <-ctx.Done():
 			return false, "", ctx.Err()
 		default:
 		}
 
-		step, ok := steps[currentStepName]
+		if len(stack) > MaxCallDepth {
+			return false, "", fmt.Errorf("max call depth %d exceeded", MaxCallDepth)
+		}
+
+		frame := stack[len(stack)-1]
+
+		currentLoop, ok := r.Loops[frame.LoopName]
 		if !ok {
-			return false, "", fmt.Errorf("step not found: %s", currentStepName)
+			return false, "", fmt.Errorf("loop not found: %s", frame.LoopName)
 		}
 
-		r.GlobalSteps++
-		loopSteps++
-
-		if r.Run != nil && r.Run.Spec.GlobalMaxSteps > 0 && r.GlobalSteps > r.Run.Spec.GlobalMaxSteps {
-			return false, "", fmt.Errorf("global max steps %d exceeded", r.Run.Spec.GlobalMaxSteps)
+		var step *api.Step
+		for i := range currentLoop.Spec.Steps {
+			if currentLoop.Spec.Steps[i].Name == frame.StepName {
+				step = &currentLoop.Spec.Steps[i]
+				break
+			}
 		}
-		if loop.Spec.MaxSteps > 0 && loopSteps > loop.Spec.MaxSteps {
-			return false, "", fmt.Errorf("loop max steps %d exceeded for loop %s", loop.Spec.MaxSteps, loopName)
+		if step == nil {
+			return false, "", fmt.Errorf("step not found: %s", frame.StepName)
+		}
+
+		if !(step.Loop != nil && frame.NestedReturned) {
+			r.GlobalSteps++
+			frame.Steps++
+
+			if r.Run != nil && r.Run.Spec.GlobalMaxSteps > 0 && r.GlobalSteps > r.Run.Spec.GlobalMaxSteps {
+				return false, "", fmt.Errorf("global max steps %d exceeded", r.Run.Spec.GlobalMaxSteps)
+			}
+			if currentLoop.Spec.MaxSteps > 0 && frame.Steps > currentLoop.Spec.MaxSteps {
+				return false, "", fmt.Errorf("loop max steps %d exceeded for loop %s", currentLoop.Spec.MaxSteps, frame.LoopName)
+			}
 		}
 
 		var pass bool
@@ -62,13 +81,33 @@ func (r *Runner) executeLoopWithDepth(ctx context.Context, loopName string, args
 		var err error
 
 		if step.Loop != nil {
-			nestedArgs := InterpolateArgs(step.Loop.Args, args)
-			pass, message, err = r.executeLoopWithDepth(ctx, step.Loop.Name, nestedArgs, depth+1)
+			if !frame.NestedReturned {
+				nestedArgs := InterpolateArgs(step.Loop.Args, frame.Args)
+				nestedLoopName := step.Loop.Name
+				nestedLoop, ok := r.Loops[nestedLoopName]
+				if !ok {
+					return false, "", fmt.Errorf("loop not found: %s", nestedLoopName)
+				}
+
+				frame.NestedReturned = true
+
+				stack = append(stack, &StackFrame{
+					LoopName: nestedLoopName,
+					StepName: nestedLoop.Spec.Start,
+					Args:     nestedArgs,
+					Steps:    0,
+				})
+				continue
+			} else {
+				pass = lastPass
+				message = lastMessage
+				frame.NestedReturned = false
+			}
 		} else {
 			if r.Executor == nil {
 				return false, "", fmt.Errorf("no executor provided for step %s", step.Name)
 			}
-			pass, message, err = r.Executor.Execute(ctx, step, args)
+			pass, message, err = r.Executor.Execute(ctx, step, frame.Args)
 		}
 
 		if err != nil {
@@ -91,14 +130,19 @@ func (r *Runner) executeLoopWithDepth(ctx context.Context, loopName string, args
 
 		switch nextAction.Next {
 		case "return":
-			return lastPass, lastMessage, nil
+			stack = stack[:len(stack)-1]
+			if len(stack) == 0 {
+				return lastPass, lastMessage, nil
+			}
 		case "retry":
-			// Keep currentStepName the same
+			// Keep frame.StepName the same
 		default:
 			if nextAction.Next == "" {
-				return false, "", fmt.Errorf("next step not specified in step %s", currentStepName)
+				return false, "", fmt.Errorf("next step not specified in step %s", frame.StepName)
 			}
-			currentStepName = nextAction.Next
+			frame.StepName = nextAction.Next
 		}
 	}
+
+	return lastPass, lastMessage, nil
 }
