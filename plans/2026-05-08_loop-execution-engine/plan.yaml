@@ -1,0 +1,21 @@
+name: engine-interfaces
+spec: loop-execution-engine
+deps: []
+out:
+  - factory/pkg/runtime/engine/types.go
+---
+name: engine-interpolation
+spec: loop-execution-engine
+deps: []
+out:
+  - factory/pkg/runtime/engine/interpolate.go
+  - factory/pkg/runtime/engine/interpolate_test.go
+---
+name: engine-runner
+spec: loop-execution-engine
+deps:
+  - engine-interfaces
+  - engine-interpolation
+out:
+  - factory/pkg/runtime/engine/runner.go
+  - factory/pkg/runtime/engine/runner_test.go

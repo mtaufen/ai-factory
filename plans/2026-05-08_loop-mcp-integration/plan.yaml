@@ -1,0 +1,15 @@
+name: mcp-client
+spec: loop-mcp-integration
+deps: []
+out:
+  - factory/pkg/mcp/client.go
+  - factory/pkg/mcp/client_test.go
+---
+name: mcp-step-executor
+spec: loop-mcp-integration
+deps:
+  - mcp-client
+out:
+  - factory/pkg/runtime/engine/mcp.go
+  - factory/pkg/runtime/engine/mcp_test.go
+  - factory/pkg/runtime/engine/runner.go

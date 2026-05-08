@@ -1,0 +1,21 @@
+name: loop-history-types
+spec: loop-history-management
+deps: []
+out:
+  - factory/pkg/runtime/history/history.go
+---
+name: loop-history-summarizer
+spec: loop-history-management
+deps:
+  - loop-history-types
+out:
+  - factory/pkg/runtime/history/summarizer.go
+  - factory/pkg/runtime/history/summarizer_test.go
+---
+name: loop-history-forwarding
+spec: loop-history-management
+deps:
+  - loop-history-summarizer
+out:
+  - factory/pkg/runtime/engine/runner.go
+  - factory/pkg/runtime/engine/runner_test.go
