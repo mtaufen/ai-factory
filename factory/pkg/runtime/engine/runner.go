@@ -131,9 +131,6 @@ func (r *Runner) ExecuteLoop(ctx context.Context, loopName string, args map[stri
 		switch nextAction.Next {
 		case "return":
 			stack = stack[:len(stack)-1]
-			if len(stack) == 0 {
-				return lastPass, lastMessage, nil
-			}
 		case "retry":
 			// Keep frame.StepName the same
 		default:
