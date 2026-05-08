@@ -7,7 +7,17 @@ import (
 	"testing"
 
 	"github.com/ai-on-gke/ai-factory/factory/pkg/runtime/api"
+	"github.com/ai-on-gke/ai-factory/factory/pkg/runtime/history"
 )
+
+type mockSummarizer struct {
+	count int
+}
+
+func (m *mockSummarizer) Summarize(ctx context.Context, current history.History, newMessages history.History) (history.History, error) {
+	m.count++
+	return history.History{{Role: "system", Content: "mocked summary"}}, nil
+}
 
 type stubExecutor struct {
 	results map[string]struct {
@@ -18,7 +28,7 @@ type stubExecutor struct {
 	execCount map[string]int
 }
 
-func (e *stubExecutor) Execute(ctx context.Context, step *api.Step, args map[string]string) (bool, string, error) {
+func (e *stubExecutor) Execute(ctx context.Context, step *api.Step, args map[string]string, currentHistory history.History) (bool, string, history.History, error) {
 	if e.execCount == nil {
 		e.execCount = make(map[string]int)
 	}
@@ -27,31 +37,31 @@ func (e *stubExecutor) Execute(ctx context.Context, step *api.Step, args map[str
 	if e.results != nil {
 		res, ok := e.results[step.Name]
 		if ok {
-			return res.pass, res.message, res.err
+			return res.pass, res.message, history.History{{Role: "system", Content: res.message}}, res.err
 		}
 	}
-	return true, "stub success", nil
+	return true, "stub success", history.History{{Role: "system", Content: "stub success"}}, nil
 }
 
 type customExecutor struct {
 	count int
 }
 
-func (e *customExecutor) Execute(ctx context.Context, step *api.Step, args map[string]string) (bool, string, error) {
+func (e *customExecutor) Execute(ctx context.Context, step *api.Step, args map[string]string, currentHistory history.History) (bool, string, history.History, error) {
 	e.count++
 	if e.count < 3 {
-		return false, "failed", nil
+		return false, "failed", history.History{{Role: "system", Content: "failed"}}, nil
 	}
-	return true, "success", nil
+	return true, "success", history.History{{Role: "system", Content: "success"}}, nil
 }
 
 type argCaptureExecutor struct {
 	capture map[string]string
 }
 
-func (e *argCaptureExecutor) Execute(ctx context.Context, step *api.Step, args map[string]string) (bool, string, error) {
+func (e *argCaptureExecutor) Execute(ctx context.Context, step *api.Step, args map[string]string, currentHistory history.History) (bool, string, history.History, error) {
 	e.capture = args
-	return true, "ok", nil
+	return true, "ok", nil, nil
 }
 
 type deleteLoopExecutor struct {
@@ -59,9 +69,9 @@ type deleteLoopExecutor struct {
 	loopToDelete string
 }
 
-func (e *deleteLoopExecutor) Execute(ctx context.Context, step *api.Step, args map[string]string) (bool, string, error) {
+func (e *deleteLoopExecutor) Execute(ctx context.Context, step *api.Step, args map[string]string, currentHistory history.History) (bool, string, history.History, error) {
 	delete(e.runner.Loops, e.loopToDelete)
-	return true, "ok", nil
+	return true, "ok", nil, nil
 }
 
 func TestRunner_ExecuteLoop(t *testing.T) {
@@ -77,8 +87,109 @@ func TestRunner_ExecuteLoop(t *testing.T) {
 		wantPass    bool
 		wantMsg     string
 		wantGlobal  int
+		summarizer  history.Summarizer
+		checkHistory func(t *testing.T, h history.History)
 		checkExtra  func(t *testing.T, exec StepExecutor)
 	}{
+		{
+			name: "HistoryNone",
+			run:  &api.Run{},
+			loops: map[string]*api.Loop{
+				"main": {
+					Spec: api.LoopSpec{
+						Start: "step1",
+						Steps: []api.Step{
+							{Name: "step1", Pass: api.NextAction{Next: "step2", History: api.HistoryFull}},
+							{Name: "step2", Pass: api.NextAction{Next: "step3", History: api.HistoryNone}},
+							{Name: "step3", Pass: api.NextAction{Next: "return", History: api.HistoryFull}},
+						},
+					},
+				},
+			},
+			executor: &stubExecutor{
+				results: map[string]struct {
+					pass    bool
+					message string
+					err     error
+				}{
+					"step1": {pass: true, message: "msg1"},
+					"step2": {pass: true, message: "msg2"},
+					"step3": {pass: true, message: "msg3"},
+				},
+			},
+			startLoop: "main",
+			wantPass:  true,
+			checkHistory: func(t *testing.T, h history.History) {
+				if len(h) != 1 || h[0].Content != "msg3" {
+					t.Errorf("expected history to contain only msg3 due to history: none, got %v", h)
+				}
+			},
+		},
+		{
+			name: "HistoryFull",
+			run:  &api.Run{},
+			loops: map[string]*api.Loop{
+				"main": {
+					Spec: api.LoopSpec{
+						Start: "step1",
+						Steps: []api.Step{
+							{Name: "step1", Pass: api.NextAction{Next: "step2", History: api.HistoryFull}},
+							{Name: "step2", Pass: api.NextAction{Next: "return", History: api.HistoryFull}},
+						},
+					},
+				},
+			},
+			executor: &stubExecutor{
+				results: map[string]struct {
+					pass    bool
+					message string
+					err     error
+				}{
+					"step1": {pass: true, message: "msg1"},
+					"step2": {pass: true, message: "msg2"},
+				},
+			},
+			startLoop: "main",
+			wantPass:  true,
+			checkHistory: func(t *testing.T, h history.History) {
+				if len(h) != 2 || h[0].Content != "msg1" || h[1].Content != "msg2" {
+					t.Errorf("expected history to contain msg1 and msg2, got %v", h)
+				}
+			},
+		},
+		{
+			name: "HistorySummary",
+			run:  &api.Run{},
+			loops: map[string]*api.Loop{
+				"main": {
+					Spec: api.LoopSpec{
+						Start: "step1",
+						Steps: []api.Step{
+							{Name: "step1", Pass: api.NextAction{Next: "step2", History: api.HistoryFull}},
+							{Name: "step2", Pass: api.NextAction{Next: "return", History: api.HistorySummary}},
+						},
+					},
+				},
+			},
+			executor: &stubExecutor{
+				results: map[string]struct {
+					pass    bool
+					message string
+					err     error
+				}{
+					"step1": {pass: true, message: "msg1"},
+					"step2": {pass: true, message: "msg2"},
+				},
+			},
+			summarizer: &mockSummarizer{},
+			startLoop:  "main",
+			wantPass:   true,
+			checkHistory: func(t *testing.T, h history.History) {
+				if len(h) != 1 || h[0].Content != "mocked summary" {
+					t.Errorf("expected history to contain mocked summary, got %v", h)
+				}
+			},
+		},
 		{
 			name: "Transitions",
 			run:  &api.Run{},
@@ -380,9 +491,10 @@ func TestRunner_ExecuteLoop(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			runner := &Runner{
-				Run:      tt.run,
-				Loops:    tt.loops,
-				Executor: tt.executor,
+				Run:        tt.run,
+				Loops:      tt.loops,
+				Executor:   tt.executor,
+				Summarizer: tt.summarizer,
 			}
 
 			if tt.name == "MidExecutionLoopDeletion" {
@@ -399,7 +511,7 @@ func TestRunner_ExecuteLoop(t *testing.T) {
 				cancel() // cancel immediately
 			}
 
-			pass, msg, err := runner.ExecuteLoop(ctx, tt.startLoop, tt.startArgs)
+			pass, msg, finalHistory, err := runner.ExecuteLoop(ctx, tt.startLoop, tt.startArgs)
 
 			if tt.wantErr != "" {
 				if err == nil {
@@ -425,6 +537,10 @@ func TestRunner_ExecuteLoop(t *testing.T) {
 
 			if tt.wantGlobal > 0 && runner.GlobalSteps != tt.wantGlobal {
 				t.Errorf("expected %d global steps, got %d", tt.wantGlobal, runner.GlobalSteps)
+			}
+
+			if tt.checkHistory != nil {
+				tt.checkHistory(t, finalHistory)
 			}
 
 			if tt.checkExtra != nil {
