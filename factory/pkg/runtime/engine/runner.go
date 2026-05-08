@@ -110,6 +110,11 @@ func (r *Runner) ExecuteLoop(ctx context.Context, loopName string, args map[stri
 				newMessages = lastHistory
 				frame.NestedReturned = false
 			}
+		} else if step.MCP != nil {
+			if r.MCPExecutor == nil {
+				return false, "", nil, fmt.Errorf("no mcp executor provided for step %s", step.Name)
+			}
+			pass, message, newMessages, err = r.MCPExecutor.Execute(ctx, step, frame.Args, frame.CurrentHistory)
 		} else {
 			if r.Executor == nil {
 				return false, "", nil, fmt.Errorf("no executor provided for step %s", step.Name)

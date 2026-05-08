@@ -14,6 +14,7 @@ type Runner struct {
 	Loops       map[string]*api.Loop
 	GlobalSteps int
 	Executor    StepExecutor
+	MCPExecutor StepExecutor
 	Summarizer  history.Summarizer
 }
 
