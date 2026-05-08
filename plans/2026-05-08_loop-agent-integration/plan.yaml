@@ -2,13 +2,15 @@ name: loop-agent-control-tools
 spec: loop-agent-integration
 deps: []
 out:
-  - factory/pkg/runtime/loop/agent_tools.go
-  - factory/pkg/runtime/loop/agent_tools_test.go
+  - factory/pkg/runtime/engine/agent_tools.go
+  - factory/pkg/runtime/engine/agent_tools_test.go
 ---
 name: loop-agent-execution
 spec: loop-agent-integration
 deps:
   - loop-agent-control-tools
 out:
-  - factory/pkg/runtime/loop/agent_executor.go
-  - factory/pkg/runtime/loop/agent_executor_test.go
+  - factory/pkg/runtime/engine/agent_executor.go
+  - factory/pkg/runtime/engine/agent_executor_test.go
+  - factory/pkg/runtime/engine/types.go
+  - factory/pkg/runtime/engine/runner.go
