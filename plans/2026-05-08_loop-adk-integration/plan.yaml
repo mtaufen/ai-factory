@@ -1,0 +1,14 @@
+name: adk-tool-adapters
+spec: loop-adk-integration
+deps: []
+out:
+  - factory/pkg/runtime/engine/adk_tools.go
+  - factory/pkg/runtime/engine/adk_tools_test.go
+---
+name: adk-agent-executor
+spec: loop-adk-integration
+deps:
+  - adk-tool-adapters
+out:
+  - factory/pkg/runtime/engine/agent_executor.go
+  - factory/pkg/runtime/engine/agent_executor_test.go

@@ -9,9 +9,6 @@ import (
 	"github.com/ai-on-gke/ai-factory/factory/pkg/mcp"
 	"github.com/ai-on-gke/ai-factory/factory/pkg/runtime/api"
 	"github.com/ai-on-gke/ai-factory/factory/pkg/runtime/history"
-
-	_ "google.golang.org/adk/agent"
-	_ "google.golang.org/adk/agent/llmagent"
 )
 
 // AgentExecutorImpl executes Agent steps.
