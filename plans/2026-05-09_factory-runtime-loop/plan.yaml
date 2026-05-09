@@ -1,0 +1,42 @@
+---
+name: mock-mcp-afero
+spec: factory-runtime-loop
+deps: []
+out:
+  - factory/pkg/runtime/engine/mock_mcp_test.go
+  - factory/pkg/runtime/engine/integration_test.go
+
+---
+name: cmd-setup
+spec: factory-runtime-loop
+deps: []
+out:
+  - factory/cmd/factory/runtime/loop/loop.go
+  - factory/cmd/factory/runtime/runtime.go
+  - factory/cmd/factory/runtime/loop/loop_test.go
+  - factory/cmd/factory/runtime/loop/testdata/sample-run.yaml
+
+---
+name: adk-model-history-adapter
+spec: factory-runtime-loop
+deps: []
+out:
+  - factory/pkg/runtime/history/adk_adapter.go
+
+---
+name: cmd-run-loop
+spec: factory-runtime-loop
+deps:
+  - cmd-setup
+  - adk-model-history-adapter
+out:
+  - factory/cmd/factory/runtime/loop/loop.go
+
+---
+name: loop-live-test
+spec: factory-runtime-loop
+deps:
+  - cmd-run-loop
+  - mock-mcp-afero
+out:
+  - factory/cmd/factory/runtime/loop/loop_live_test.go
