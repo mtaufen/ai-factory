@@ -1,0 +1,48 @@
+apiVersion: factory.ai-on-gke.github.com/v1alpha1
+kind: Run
+metadata:
+  name: sample-run
+spec:
+  globalMaxSteps: 10
+  start: MainLoop
+
+---
+apiVersion: factory.ai-on-gke.github.com/v1alpha1
+kind: Loop
+metadata:
+  name: MainLoop
+spec:
+  start: Step1
+  steps:
+    - name: Step1
+      agent:
+        name: my-agent
+      pass:
+        next: return
+        history: summary
+      fail:
+        next: return
+        history: full
+
+---
+apiVersion: factory.ai-on-gke.github.com/v1alpha1
+kind: Agent
+metadata:
+  name: my-agent
+spec:
+  prompt:
+    value: "You are a test agent. Please write the word 'hello' to a file named 'output.txt' using the WriteFile tool. After writing the file, use the 'pass' tool to signal you are done."
+  tools:
+    - mcp:
+        name: my-mcp-server
+        tools:
+          - name: WriteFile
+
+---
+apiVersion: factory.ai-on-gke.github.com/v1alpha1
+kind: LocalMCPServer
+metadata:
+  name: my-mcp-server
+spec:
+  command: "echo"
+  args: ["dummy"]

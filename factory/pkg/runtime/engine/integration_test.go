@@ -8,17 +8,19 @@ import (
 
 	"github.com/ai-on-gke/ai-factory/factory/pkg/mcp"
 	"github.com/ai-on-gke/ai-factory/factory/pkg/runtime/api"
+	"github.com/spf13/afero"
 	"google.golang.org/adk/model"
 	"google.golang.org/genai"
 )
 
 func TestLoopPodIntegration(t *testing.T) {
 	tempDir := t.TempDir()
+	fs := afero.NewMemMapFs()
 
 	devClientEnd, devServerEnd := createMockServerPipe()
 	gitClientEnd, gitServerEnd := createMockServerPipe()
 
-	runDevMockMCPServer(t, devServerEnd, tempDir)
+	runDevMockMCPServer(t, devServerEnd, fs, tempDir)
 	runDummyMockMCPServer(t, gitServerEnd)
 
 	devClient := mcp.NewClientWithPipe(devClientEnd)
@@ -177,7 +179,7 @@ func TestLoopPodIntegration(t *testing.T) {
 		t.Errorf("expected non-empty history")
 	}
 
-	data, err := os.ReadFile(filepath.Join(tempDir, "hello.txt"))
+	data, err := afero.ReadFile(fs, filepath.Join(tempDir, "hello.txt"))
 	if err != nil {
 		t.Fatalf("expected hello.txt to exist: %v", err)
 	}

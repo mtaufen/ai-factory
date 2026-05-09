@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/ai-on-gke/ai-factory/factory/pkg/mcp"
+	"github.com/spf13/afero"
 )
 
 type readWriteCloser struct {
@@ -65,7 +65,7 @@ func (m *mockPipeConnectionManager) CloseAll() error {
 	return nil
 }
 
-func runDevMockMCPServer(t *testing.T, rw io.ReadWriteCloser, tempDir string) {
+func runDevMockMCPServer(t *testing.T, rw io.ReadWriteCloser, fs afero.Fs, tempDir string) {
 	go func() {
 		defer rw.Close()
 		decoder := json.NewDecoder(rw)
@@ -98,7 +98,7 @@ func runDevMockMCPServer(t *testing.T, rw io.ReadWriteCloser, tempDir string) {
 				switch name {
 				case "ReadFile":
 					path, _ := argsMap["path"].(string)
-					data, err := os.ReadFile(filepath.Join(tempDir, path))
+					data, err := afero.ReadFile(fs, filepath.Join(tempDir, path))
 					if err != nil {
 						text = err.Error()
 					} else {
@@ -107,7 +107,7 @@ func runDevMockMCPServer(t *testing.T, rw io.ReadWriteCloser, tempDir string) {
 				case "WriteFile":
 					path, _ := argsMap["path"].(string)
 					content, _ := argsMap["content"].(string)
-					err := os.WriteFile(filepath.Join(tempDir, path), []byte(content), 0644)
+					err := afero.WriteFile(fs, filepath.Join(tempDir, path), []byte(content), 0644)
 					if err != nil {
 						text = err.Error()
 					} else {

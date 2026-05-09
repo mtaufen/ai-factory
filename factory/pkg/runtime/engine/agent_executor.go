@@ -140,7 +140,11 @@ func (e *AgentExecutorImpl) Execute(ctx context.Context, step *api.Step, args ma
 	}
 
 	// Execute the agent
-	seq := r.Run(ctx, "user", "loop-session", nil, agent.RunConfig{})
+	// Note: We MUST provide a user message or else ADK might fail if the model tries to call a tool immediately.
+	seq := r.Run(ctx, "user", "loop-session", &genai.Content{
+		Role:  "user",
+		Parts: []*genai.Part{{Text: "Begin execution."}},
+	}, agent.RunConfig{})
 
 	var lastErr error
 	for ev, err := range seq {
