@@ -32,14 +32,16 @@ A spec for an init container that configures UID-based iptables rules to restric
 ### KRM Configuration
 The init container will accept a configuration file (e.g., mounted via `ConfigMap` to `/etc/network-isolation/config.yaml`).
 ```yaml
-kind: PodNetworkIsolation
+kind: UIDEgressPolicy
 apiVersion: factory.ai.gke.io/v1alpha1
 spec:
   rules:
   - uid: 1001
-    allowEgress: false # Block all external network access
+    allowEgress: false # Block all external network access (Dev MCP)
   - uid: 1002
-    allowEgress: true  # Allow external access
+    allowEgress: true  # Allow external access (Git MCP)
+  - uid: 1003
+    allowEgress: true  # Allow external access (Loop LLM calls)
 ```
 
 ### Implementation Details
@@ -53,7 +55,8 @@ The init container will be a simple Go binary or bash script that parses the con
 
 - Must verify that a container running as UID 1001 (Dev, `allowEgress: false`) cannot reach the internet.
 - Must verify that a container running as UID 1002 (Git, `allowEgress: true`) can reach the internet.
-- Must verify that a container running as an unconfigured UID (e.g., UID 1003) cannot reach the internet (Default-Deny validation).
+- Must verify that a container running as UID 1003 (Loop, `allowEgress: true`) can reach the internet.
+- Must verify that a container running as an unconfigured UID (e.g., UID 1004) cannot reach the internet (Default-Deny validation).
 - Must verify that UID 1001 cannot reach localhost (`127.0.0.1` or `::1`) on any port.
 - Must verify that UID 1001 cannot reach external resources via IPv6.
 - Must verify that the init container fails to start the Pod if given an invalid config.

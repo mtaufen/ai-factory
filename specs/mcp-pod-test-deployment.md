@@ -47,7 +47,7 @@ The test deployment will be a single Pod YAML manifest `mcp-test-pod.yaml`.
 - `git-mcp-pipe`: `emptyDir` for git MCP IPC.
 - `dev-mcp-pipe`: `emptyDir` for dev MCP IPC.
 - `workspace`: `emptyDir` for shared code workspace.
-- `network-config`: `ConfigMap` containing the `PodNetworkIsolation` KRM definition.
+- `network-config`: `ConfigMap` containing the `UIDEgressPolicy` KRM definition.
 
 #### Init Containers
 1. **`network-setup`**:
@@ -90,7 +90,7 @@ spec:
         add: ["NET_ADMIN"]
   - name: pipe-setup
     image: busybox
-    command: ["sh", "-c", "mkfifo /var/run/mcp/git-mcp/pipe && mkfifo /var/run/mcp/dev-mcp/pipe"]
+    command: ["sh", "-c", "mkfifo /var/run/mcp/git-mcp/pipe && chmod 0666 /var/run/mcp/git-mcp/pipe && mkfifo /var/run/mcp/dev-mcp/pipe && chmod 0666 /var/run/mcp/dev-mcp/pipe"]
     volumeMounts:
     - name: git-mcp-pipe
       mountPath: /var/run/mcp/git-mcp

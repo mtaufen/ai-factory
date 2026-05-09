@@ -25,19 +25,20 @@ Specifies the mechanism to set up named pipes (FIFOs) for communication between 
 ### The Problem
 If containers create their own named pipes in a shared `emptyDir`, race conditions can occur if one container starts before the other, or if it lacks the necessary permissions to create the pipe in a specific way.
 
-### The Solution: Init Container
-We will use an `initContainer` specifically for creating the pipes.
-- **Volume:** A single `emptyDir` mounted at `/var/run/mcp` across all relevant containers.
+### The Solution: Init Container & Multi-Volume Isolation
+We will use an `initContainer` specifically for creating the pipes, combined with dedicated `emptyDir` volumes for each pipe to enforce strict isolation between MCP servers.
+- **Volumes:** Separate `emptyDir` volumes for each MCP server (e.g., `git-mcp-pipe`, `dev-mcp-pipe`).
 - **Init Container:** `pipe-setup` runs a simple script:
   ```sh
-  mkfifo /var/run/mcp/git-mcp
-  mkfifo /var/run/mcp/dev-mcp
-  chmod 0666 /var/run/mcp/*
+  mkfifo /var/run/mcp/git-mcp/pipe
+  chmod 0666 /var/run/mcp/git-mcp/pipe
+  mkfifo /var/run/mcp/dev-mcp/pipe
+  chmod 0666 /var/run/mcp/dev-mcp/pipe
   ```
-- **Permissions:** `chmod 0666` allows any container running within the Pod (regardless of their UID) to read and write to the FIFOs. Since this is an isolated `emptyDir` within the Pod, this is secure against external interference.
+- **Permissions:** `chmod 0666` allows containers running under different UIDs to read and write to the FIFOs. Because each pipe resides in its own isolated `emptyDir` volume, a container (like `dev-mcp`) will only mount its specific pipe volume, physically preventing it from accessing other pipes (like `git-mcp`'s) regardless of the file permissions.
 
 ### Sidecar Integration
-The MCP servers (running as K8s native sidecars via `initContainers` with `restartPolicy: Always`) will mount the `/var/run/mcp` volume and listen on their respective pipes. The `factory runtime loop` main container will connect to these pipes.
+The MCP servers (running as K8s native sidecars) will mount only their respective pipe volume (e.g., `git-mcp` mounts `git-mcp-pipe` to `/var/run/mcp/git-mcp`). The `factory runtime loop` main container will mount all required pipe volumes so it can communicate with all of them.
 
 ## Tests
 
