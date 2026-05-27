@@ -1,0 +1,72 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: factory-operator
+  namespace: default
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: factory-operator
+  namespace: default
+rules:
+- apiGroups: ["agents.x-k8s.io"]
+  resources: ["sandboxes"]
+  verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: factory-operator
+  namespace: default
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: factory-operator
+subjects:
+- kind: ServiceAccount
+  name: factory-operator
+  namespace: default
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: factory-operator
+  namespace: default
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: factory-operator
+  template:
+    metadata:
+      labels:
+        app: factory-operator
+    spec:
+      serviceAccountName: factory-operator
+      containers:
+      - name: operator
+        image: IMAGE_PLACEHOLDER
+        env:
+        - name: AGENTS_DIR
+          value: "/workspace/.agents"
+        volumeMounts:
+        - name: workspace
+          mountPath: /workspace
+      - name: git-sync
+        image: registry.k8s.io/git-sync/git-sync:v4.2.3
+        env:
+        - name: GITSYNC_REPO
+          value: "https://github.com/ai-factory/ai-factory.git" # Replace with actual repo
+        - name: GITSYNC_ROOT
+          value: "/workspace"
+        - name: GITSYNC_DEST
+          value: "."
+        - name: GITSYNC_PERIOD
+          value: "10s"
+        volumeMounts:
+        - name: workspace
+          mountPath: /workspace
+      volumes:
+      - name: workspace
+        emptyDir: {}

@@ -1,0 +1,18 @@
+#!/bin/bash
+set -ex
+
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+# Get project to construct image prefix
+PROJECT_ID=$(gcloud config get project 2>/dev/null || echo "ai-factory")
+IMAGE_PREFIX="gcr.io/${PROJECT_ID}/"
+IMAGE="${IMAGE_PREFIX}factory-operator:latest"
+
+echo "Building factory-operator image..."
+docker build -t "${IMAGE}" "${DIR}"
+
+echo "Pushing image..."
+docker push "${IMAGE}" || echo "Warning: failed to push, maybe running locally?"
+
+echo "Deploying factory-operator..."
+sed "s|IMAGE_PLACEHOLDER|${IMAGE}|g" "${DIR}/manifests.yaml" | kubectl apply -f -

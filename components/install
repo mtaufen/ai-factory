@@ -24,5 +24,6 @@ echo "Installing components..."
 "${DIR}/cert-manager/install"
 "${DIR}/service-portals/install"
 "${DIR}/agent-sandbox/install"
+"${DIR}/factory-operator/install"
 
 echo "All components installed successfully."
